@@ -1,0 +1,131 @@
+#!/bin/python3
+
+import re
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By
+
+from time import sleep
+import random
+import sys
+import os
+
+# if -q, text is passed as an argument
+# if -c, conversation mode is enabled
+
+if len(sys.argv) == 1:
+    print("Usage: ./openai_chat.py [-q \"text\"] [-c]")
+    sys.exit(1)
+
+if sys.argv[1] == "-q" or sys.argv[1] == "--query":
+    # rest of the arguments are the text
+    text = " ".join(sys.argv[2:])
+    conversation = False
+elif sys.argv[1] == "-c" or sys.argv[1] == "--conversation":
+    conversation = True
+else:
+    print("Usage: ./openai_chat.py [-q \"text\"] [-c]")
+    sys.exit(1)
+
+# run the MOZ_HEADLESS=1
+service = Service(executable_path="/usr/bin/geckodriver")
+options = webdriver.FirefoxOptions()
+
+options.binary_filename = "/usr/bin/firefox"
+
+# navigate to https://chat.openai.com/
+# print("Opening the browser")
+
+def runFirefox(service=service, options=options):
+    os.environ['MOZ_HEADLESS'] = '1'
+    driver = webdriver.Firefox(service=service, options=options)
+    driver.get("https://chat.openai.com/")
+    driver.implicitly_wait(10)
+    return driver
+
+def closeFirefox(driver):
+    if driver:
+        driver.quit()
+    os.environ['MOZ_HEADLESS'] = '0'
+
+
+driver = runFirefox(service=service, options=options)
+
+# find the textarea element
+text_area = driver.find_element(By.XPATH, "//textarea")
+
+if conversation:
+    print("Conversation mode enabled")
+    print("Type 'q' to exit the conversation")
+    while True:
+        text = input(">>> ")
+        if text == "q":
+            break
+        text_area.send_keys(text)
+        sleep(1)
+        button = driver.find_element(By.XPATH, "//button[@data-testid='send-button']")
+        button.click()
+
+        # print("Waiting for response")
+        driver.implicitly_wait(2)
+        # wait for the button to not have disabled=""
+        button_disabled = True
+        while button_disabled:
+            sleep(1)
+            # find button with disabled=""
+            # if button with data-testid='send-button' also has disabled=""
+            # then button_disabled = True
+            if driver.find_elements(By.XPATH, "//button[@aria-label='Stop generating']") != []:
+                button_disabled = True
+            else:
+                button_disabled = False
+
+        # get highest odd conversation turn
+        id = 3
+        maxid = -1
+        response = ""
+        while True:
+            response = driver.find_elements(By.XPATH, f"//div[@data-testid='conversation-turn-{id}']")
+            if response == []:
+                break
+            maxid = id
+            id += 2
+
+        response = driver.find_element(By.XPATH, f"//div[@data-testid='conversation-turn-{maxid}']")
+
+        response_text = response.text.split("\n")[2:]
+        print("\n".join(response_text))
+    closeFirefox(driver=driver)
+    sys.exit(0)
+
+
+############################### SINGLE QUERY ####################################
+# send the text to the textarea
+text_area.send_keys(text)
+sleep(1)
+button = driver.find_element(By.XPATH, "//button[@data-testid='send-button']")
+button.click()
+
+# print("Waiting for response")
+driver.implicitly_wait(2)
+# wait for the button to not have disabled=""
+button_disabled = True
+while button_disabled:
+    sleep(1)
+    # find button with disabled=""
+    # if button with data-testid='send-button' also has disabled=""
+    # then button_disabled = True
+    if driver.find_elements(By.XPATH, "//button[@aria-label='Stop generating']") != []:
+        button_disabled = True
+    else:
+        button_disabled = False
+
+response = driver.find_element(By.XPATH, "//div[@data-testid='conversation-turn-3']")
+
+response_text = response.text.split("\n")[2:]
+print("\n".join(response_text))
+
+# close the browser
+closeFirefox(driver=driver)
